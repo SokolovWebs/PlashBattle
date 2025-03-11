@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale: 1.0">
+    <title>Морской бой</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #87ceeb;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 20px;
+        }
+
+        #game {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            gap: 2px;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1;
+            margin: 20px 0;
+        }
+
+        .cell {
+            background-color: #1e90ff;
+            border: 1px solid #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .cell:hover {
+            background-color: #00bfff;
+        }
+
+        .ship {
+            background-color: #ff4500;
+            cursor: grab;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+
+        .hit {
+            background-color: #dc143c;
+        }
+
+        .miss {
+            background-color: #b0e0e6;
+        }
+
+        .ship-container {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+
+        #restartBtn {
+            background-color: #ff6347;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+
+        #restartBtn:hover {
+            background-color: #ff4500;
+        }
+
+        #status {
+            color: #fff;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Морской бой</h1>
+    <div id="status">Игрок 1: Задать местоположение кораблей.</div>
+    <div class="ship-container" id="shipContainer">
+        <div class="ship" draggable="true" data-size="4" id="ship4">Корабль 4 клетки</div>
+        <div class="ship" draggable="true" data-size="3" id="ship3_1">Корабль 3 клетки</div>
+        <div class="ship" draggable="true" data-size="3" id="ship3_2">Корабль 3 клетки</div>
+        <div class="ship" draggable="true" data-size="2" id="ship2_1">Корабль 2 клетки</div>
+        <div class="ship" draggable="true" data-size="2" id="ship2_2">Корабль 2 клетки</div>
+        <div class="ship" draggable="true" data-size="2" id="ship2_3">Корабль 2 клетки</div>
+        <div class="ship" draggable="true" data-size="1" id="ship1_1">Корабль 1 клетка</div>
+        <div class="ship" draggable="true" data-size="1" id="ship1_2">Корабль 1 клетка</div>
+        <div class="ship" draggable="true" data-size="1" id="ship1_3">Корабль 1 клетка</div>
+        <div class="ship" draggable="true" data-size="1" id="ship1_4">Корабль 1 клетка</div>
+    </div>
+    <div id="game"></div>
+    <button id="restartBtn" style="display: none;">Начать заново</button>
+
+    <script>
+        const game = document.getElementById('game');
+        const restartBtn = document.getElementById('restartBtn');
+        const status = document.getElementById('status');
+        const shipContainer = document.getElementById('shipContainer');
+
+        const boardSize = 10;
+        let currentPlayer = 1;
+        let isPlacingShips = true;
+
+        let playerBoards = [
+            Array.from({ length: boardSize }, () => Array(boardSize).fill(0)), // Board for player 1
+            Array.from({ length: boardSize }, () => Array(boardSize).fill(0))  // Board for player 2
+        ];
+
+        // Создание игрового поля
+        function createBoard() {
+            game.innerHTML = '';
+            for (let row = 0; row < boardSize; row++) {
+                for (let col = 0; col < boardSize; col++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.addEventListener('dragover', handleDragOver);
+                    cell.addEventListener('drop', handleDrop);
+                    game.appendChild(cell);
+                }
+            }
+        }
+
+        // Перетаскивание кораблей
+        document.querySelectorAll('.ship').forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragend', handleDragEnd);
+            item.addEventListener('click', toggleDirection);
+            item.addEventListener('drag', handleDrag);
+        });
+
+        let draggingShip = null;
+        let draggingSize = 0;
+        let isVertical = false;
+        let initialPosition = { row: null, col: null };
+
+        function handleDragStart(event) {
+            draggingShip = event.target; // Запоминаем перемещаемый корабль
+            draggingSize = parseInt(event.target.dataset.size);
+            event.dataTransfer.effectAllowed = "move"; // Устанавливаем эффект перемещения
+            initialPosition.row = null;
+            initialPosition.col = null;
+        }
+
+        function handleDragEnd(event) {
+            draggingShip = null; // Обнуляем перемещаемый корабль
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault(); // Позволяем элементу быть "падением"
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            const cell = event.target;
+            const row = parseInt(cell.dataset.row);
+            const col = parseInt(cell.dataset.col);
+
+            // Проверяем, можно ли разместить корабль
+            if (isPlacingShips && draggingShip) {
+                if (canPlaceShip(row, col, draggingSize, isVertical)) {
+                    placeShip(row, col, draggingSize, isVertical);
+                } else {
+                    alert('Корабль не помещается или нарушены правила размещения!');
+                }
+            }
+        }
+
+        // Проверка возможности разместить корабль
+        function canPlaceShip(row, col, size, vertical) {
+            for (let i = 0; i < size; i++) {
+                const r = vertical ? row + i : row;
+                const c = vertical ? col : col + i;
+                if (r >= boardSize || c >= boardSize || playerBoards[currentPlayer - 1][r][c] === 1) {
+                    return false;
+                }
+            }
+            return !hasNearbyShips(row, col, size, vertical);
+        }
+
+        // Функция для размещения корабля
+        function placeShip(row, col, size, vertical) {
+            for (let i = 0; i < size; i++) {
+                const r = vertical ? row + i : row;
+                const c = vertical ? col : col + i;
+                playerBoards[currentPlayer - 1][r][c] = 1; // Установка корабля
+                document.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`).classList.add('ship');
+            }
+        }
+
+        // Проверка на наличие других кораблей вокруг
+        function hasNearbyShips(row, col, size, vertical) {
+            const directions = [
+                { r: -1, c: 0 }, { r: 1, c: 0 },
+                { r: 0, c: -1 }, { r: 0, c: 1 },
+                { r: -1, c: -1 }, { r: -1, c: 1 },
+                { r: 1, c: -1 }, { r: 1, c: 1 }
+            ];
+
+            for (let i = 0; i < size; i++) {
+                const r = vertical ? row + i : row;
+                const c = vertical ? col : col + i;
+
+                for (const dir of directions) {
+                    const checkRow = r + dir.r;
+                    const checkCol = c + dir.c;
+                    if (checkRow >= 0 && checkRow < boardSize && checkCol >= 0 && checkCol < boardSize) {
+                        if (playerBoards[currentPlayer - 1][checkRow][checkCol] === 1) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Переключение ориентации корабля
+        function toggleDirection(event) {
+            isVertical = !isVertical;
+            draggingShip.classList.toggle('vertical', isVertical);
+            draggingShip.classList.toggle('horizontal', !isVertical);
+        }
+
+        // Движение кораблей
+        function handleDrag(event) {
+            const { clientX, clientY } = event;
+            if (draggingShip) {
+                draggingShip.style.position = 'absolute';
+                draggingShip.style.left = `${clientX - 50}px`; // Центрируем корабль по X
+                draggingShip.style.top = `${clientY - 10}px`; // Центрируем корабль по Y
+            }
+        }
+
+        restartBtn.addEventListener('click', () => {
+            currentPlayer = 1;
+            isPlacingShips = true;
+            playerBoards = [
+                Array.from({ length: boardSize }, () => Array(boardSize).fill(0)),
+                Array.from({ length: boardSize }, () => Array(boardSize).fill(0))
+            ];
+            createBoard();
+            status.textContent = 'Игрок 1: Задать местоположение кораблей.';
+            restartBtn.style.display = 'none';
+        });
+
+        createBoard();
+    </script>
+</body>
+</html>
